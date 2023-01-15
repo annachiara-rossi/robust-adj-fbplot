@@ -1,0 +1,36 @@
+#!/bin/bash
+#PBS -S /bin/bash
+
+# Number of cores (and select maximum runtime)
+#PBS -l nodes=1:ppn=32,walltime=24:00:00 -q gigatlong
+
+
+# Set the job name
+#PBS -N parallel_simulation_trial
+
+# Set the output file and merge it to the sterr
+#PBS -o out-hostname-XyZ-N1x1-qsub.txt
+#PBS -j oe
+#PBS -e out-hostname-XyZ-N1x1.txt
+
+export mkPrefix=/u/sw
+source ${mkPrefix}/etc/profile
+# Setting an environmental module system here
+module load gcc-glibc/9
+module load R
+
+export num_cores = 32
+
+# Start the job in the current directory (PBS starts in the home folder)
+cd ${PBS_O_WORKDIR}
+
+# Let's translate the file ${PBS_NODEFILE}, used by the
+# PBS environment, into something that can be read by mpiexec. --> I DON'T NEED$
+#sort ${PBS_NODEFILE} | uniq -c | awk '{ printf("%s\n", $2); }' > mpd.nodes
+
+
+#---------------------------------------------------------------------#
+# 1) Run the executable
+
+R CMD BATCH parallel_simulation_user.R > output_file.txt 2>&1
+

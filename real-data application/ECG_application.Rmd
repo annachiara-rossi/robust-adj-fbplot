@@ -1,0 +1,267 @@
+---
+title: "Real data application"
+author: "Annachiara Rossi"
+date: "9/12/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(Matrix)
+library(roahd)
+library(here) # to get the project directory
+```
+
+```{r}
+data('mfD_healthy', package = 'roahd')
+univariate_fdata <- mfD_healthy$fDList[[1]] # I consider the first lead only
+plot(univariate_fdata)
+```
+
+# Non-adjusted functional boxplot
+
+```{r, cache=TRUE}
+fbp <- invisible(fbplot(univariate_fdata, main=""))
+names(fbp$ID_outliers) = NULL
+print(fbp$ID_outliers)
+```
+
+# Adjusted functional boxplot, roahd implementation (OGK_Qn)
+
+```{r, cache=TRUE}
+set.seed(130298)
+fbp_roahd <- fbplot(univariate_fdata, main="", adjust = list(VERBOSE=FALSE))
+invisible(fbp_roahd)
+
+names(fbp_roahd$ID_outliers) = NULL
+print(fbp_roahd$ID_outliers)
+print(paste('Number of outliers: ',length(fbp_roahd$ID_outliers)))
+```
+
+
+# Remove extreme cases and contaminate with non-healthy patients
+
+```{r}
+extreme_obs <- fbp_roahd$ID_outliers
+new_values <- univariate_fdata$values[-extreme_obs,]
+# NB: the subscripting of fData objects doesn't work with negative indexes
+grid <- seq(from = univariate_fdata$t0, to = univariate_fdata$tP, length.out = univariate_fdata$P)
+data <- fData(grid, new_values)
+
+plot(data)
+```
+
+Now contaminate this data with the same lead observed from subjects affected by Left-Bundle-Branch-Block.
+
+```{r}
+data('mfD_LBBB', package = 'roahd')
+anomalies <- mfD_LBBB$fDList[[1]] # I consider the first lead only
+plot(anomalies)
+```
+
+Sample a few observations from this data. Since we are left with 34 good samples, we can take 6 from the bad ones.
+
+```{r}
+set.seed(130298)
+n_out <- 6
+idx <- sample.int(anomalies$N, n_out)
+# 10
+idx <- c(3,35,2,16,31,48)
+contamined_data <- append_fData(data, anomalies[idx])
+out_highlighter <- rep(c(1,2),c(40-n_out,n_out)) 
+plot(contamined_data, col=out_highlighter, 
+     main ="ECG contamined data", cex.main =1,
+     xlab = 'registered time (ms)', ylab = 'ECG lead I')
+```
+
+
+# Spot outliers
+
+## Case without adjustment
+
+```{r, cache=TRUE}
+time_start = Sys.time()
+fbp <- fbplot(contamined_data, main="Functional boxplot without adjustment", 
+              cex.main = 1, xlab = 'registered time (ms)', ylab = 'ECG lead I')
+time_end = Sys.time()
+invisible(fbp)
+
+names(fbp$ID_outliers) = NULL
+print(fbp$ID_outliers)
+print(paste('Number of outliers: ',length(fbp$ID_outliers)))
+difftime(time_end, time_start, units = 'mins')[[1]]
+``` 
+
+TP = 4
+FP = 0
+
+## Cases with adjustment
+
+```{r}
+# get functional boxplot implementation from the project directory
+source(here('user_fbplot.R'), chdir= TRUE)
+```
+
+### Ledoit_Wolf
+
+```{r}
+cov_estimator <- 'Ledoit_Wolf'
+time_start = Sys.time()
+fbp_lw <- my_fbplot.fData(contamined_data, 
+                            main = cov_estimator, 
+                            adjust = list(Cov_estimator = cov_estimator,
+                                          TPR=2 * stats::pnorm( 4 * stats::qnorm( 0.15 ) )), 
+                          cex.main = 1, 
+                           xlab = 'registered time (ms)', 
+                           ylab = 'ECG lead I')
+time_end = Sys.time()
+invisible(fbp_lw)
+
+names(fbp_lw$ID_outliers) = NULL
+print(fbp_lw$ID_outliers)
+print(paste('Number of outliers: ',length(fbp_lw$ID_outliers)))
+difftime(time_end, time_start, units = 'mins')[[1]]
+```
+
+TP = 5
+FP = 6
+
+### OGK-Qn
+
+```{r, cache=TRUE}
+time_start = Sys.time()
+fbp_roahd <- fbplot(contamined_data, main="", adjust = list(VERBOSE=FALSE))
+time_end = Sys.time()
+invisible(fbp_roahd)
+
+names(fbp_roahd$ID_outliers) = NULL
+print(fbp_roahd$ID_outliers)
+print(paste('Number of outliers: ',length(fbp_roahd$ID_outliers)))
+difftime(time_end, time_start, units = 'mins')[[1]]
+```
+
+TP = 5
+FP = 8
+
+
+
+```{r}
+cov_estimator <- 'OGK_Qn'
+time_start = Sys.time()
+fbp_ogk <- my_fbplot.fData(contamined_data, 
+                            main = cov_estimator, 
+                            adjust = list(Cov_estimator = cov_estimator,
+                                          TPR=2 * stats::pnorm( 4 * stats::qnorm( 0.15 ) )), 
+                           cex.main = 1, 
+                           xlab = 'registered time (ms)', 
+                           ylab = 'ECG lead I')
+time_end = Sys.time()
+invisible(fbp_ogk)
+
+names(fbp_ogk$ID_outliers) = NULL
+print(fbp_ogk$ID_outliers)
+print(paste('Number of outliers: ',length(fbp_ogk$ID_outliers)))
+difftime(time_end, time_start, units = 'mins')[[1]]
+```
+
+TP = 6
+FP = 5
+
+```{r}
+cov_estimator <- 'MRCD'
+time_start = Sys.time()
+fbp_mrcd <- my_fbplot.fData(contamined_data, 
+                            main = cov_estimator, 
+                            adjust = list(Cov_estimator = cov_estimator,
+                                          TPR=2 * stats::pnorm( 4 * stats::qnorm( 0.15 ) )),
+                           cex.main = 1, 
+                           xlab = 'registered time (ms)', 
+                           ylab = 'ECG lead I')
+time_end = Sys.time()
+invisible(fbp_mrcd)
+
+names(fbp_mrcd$ID_outliers) = NULL
+print(fbp_mrcd$ID_outliers)
+print(paste('Number of outliers: ',length(fbp_mrcd$ID_outliers)))
+difftime(time_end, time_start, units = 'mins')[[1]]
+```
+TP = 6
+FP = 7
+
+I took L=P and computed eigenfunctions/eigenvalues. First 10 eigenvalues represent 18\% of variability, first 50 give 53\% and first 100 give 75\%.
+L = 200 v = 0.88
+
+
+```{r, message=FALSE, warning=FALSE}
+cov_estimator <- 'Spherical'
+time_start = Sys.time()
+fbp_sph <- my_fbplot.fData(contamined_data, 
+                            main = cov_estimator, 
+                            adjust = list(Cov_estimator = cov_estimator,
+                                          TPR=2 * stats::pnorm( 4 * stats::qnorm( 0.15 ) )), L = 100,
+                           cex.main = 1, 
+                           xlab = 'registered time (ms)', 
+                           ylab = 'ECG lead I')
+time_end = Sys.time()
+
+names(fbp_sph$ID_outliers) = NULL
+print(fbp_sph$ID_outliers)
+print(paste('Number of outliers: ',length(fbp_sph$ID_outliers)))
+difftime(time_end, time_start, units = 'mins')[[1]]
+```
+
+TP = 6
+FP = 9
+
+```{r, message=FALSE, warning=FALSE}
+cov_estimator <- 'Median'
+time_start = Sys.time()
+fbp_med <- my_fbplot.fData(contamined_data, 
+                            main = cov_estimator, 
+                            adjust = list(Cov_estimator = cov_estimator,
+                                          TPR=2 * stats::pnorm( 4 * stats::qnorm( 0.15 ) )), L = 100,
+                           cex.main = 1, 
+                           xlab = 'registered time (ms)', 
+                           ylab = 'ECG lead I')
+time_end = Sys.time()
+
+names(fbp_med$ID_outliers) = NULL
+print(fbp_med$ID_outliers)
+print(paste('Number of outliers: ',length(fbp_med$ID_outliers)))
+difftime(time_end, time_start, units = 'mins')[[1]]
+```
+
+TP = 6
+FP = 10
+
+
+```{r, message=FALSE, warning=FALSE}
+cov_estimator <- 'Kendall'
+time_start = Sys.time()
+fbp_ken <- my_fbplot.fData(contamined_data, 
+                            main = cov_estimator, 
+                            adjust = list(Cov_estimator = cov_estimator,
+                                          TPR=2 * stats::pnorm( 4 * stats::qnorm( 0.15 ) )),
+                           cex.main = 1, 
+                           xlab = 'registered time (ms)', 
+                           ylab = 'ECG lead I')
+time_end = Sys.time()
+
+names(fbp_ken$ID_outliers) = NULL
+print(fbp_ken$ID_outliers)
+print(paste('Number of outliers: ',length(fbp_ken$ID_outliers)))
+# doesn't work because of bandwidth ??
+difftime(time_end, time_start, units = 'mins')[[1]]
+```
+
+
+
+
+
+
+
+
+
